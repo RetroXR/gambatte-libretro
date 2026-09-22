@@ -216,7 +216,10 @@ jobs:
       - name: Package
         run: |
           lib=gambatte_libretro.dylib
-          mapfile -t hits < <(find . -maxdepth 2 -name "$lib" -type f)
+          # No mapfile: macOS still ships bash 3.2, where it does not exist, and
+          # the step dies with exit 127 before it has looked at a thing.
+          hits=()
+          while IFS= read -r f; do hits+=("$f"); done < <(find . -maxdepth 2 -name "$lib" -type f)
           if [ "${#hits[@]}" -ne 1 ]; then
             echo "expected exactly one $lib, found ${#hits[@]}:"
             printf '  %s\n' "${hits[@]}"
