@@ -1,5 +1,5 @@
-# Build the retroXR gambatte core for Windows and Android and publish it as a
-# release, so retroXR's CoreDownloadManager can fetch it.
+# Build the retroXR gambatte core for Windows, Android, Linux and macOS and
+# publish it as a release, so retroXR's CoreDownloadManager can fetch it.
 #
 # This fork carries the Game Boy link cable: a link interface block, a SerialIO
 # that knows where the machine's clock stands, and libretro/link_serial.cpp
@@ -16,6 +16,10 @@
 #
 #   Windows  gambatte_libretro.dll.zip          containing gambatte_libretro.dll
 #   Android  gambatte_libretro_android.so.zip   containing gambatte_libretro_android.so
+#   Linux    gambatte_libretro.so.zip           containing gambatte_libretro.so
+#   macOS    gambatte_libretro_arm64.dylib.zip
+#            gambatte_libretro_x86_64.dylib.zip
+#              each containing gambatte_libretro.dylib
 #
 # Windows is cross-compiled from Ubuntu with mingw-w64 rather than built with
 # MSVC, because that is what Makefile.libretro's Windows branch is written for:
@@ -144,9 +148,99 @@ jobs:
           path: gambatte_libretro_android.so.zip
           if-no-files-found: error
 
+  # The oldest Ubuntu runner: a shared library loads only against a glibc at
+  # least as new as the one it was linked with.
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make zip
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Build
+        run: make -f Makefile.libretro platform=unix -j$(nproc)
+
+      - name: Package
+        run: |
+          mapfile -t hits < <(find . -maxdepth 2 -name 'gambatte_libretro.so' -type f)
+          if [ "${#hits[@]}" -ne 1 ]; then
+            echo "expected exactly one gambatte_libretro.so, found ${#hits[@]}:"
+            printf '  %s\n' "${hits[@]}"
+            exit 1
+          fi
+          mkdir -p stage
+          cp "${hits[0]}" stage/gambatte_libretro.so
+          (cd stage && zip -q -X ../gambatte_libretro.so.zip gambatte_libretro.so)
+          file stage/gambatte_libretro.so
+          ls -lh gambatte_libretro.so.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: gambatte_libretro.so.zip
+          if-no-files-found: error
+
+  # Both architectures on one Apple Silicon runner, with the flags libretro's
+  # own osx-arm64 CI template passes: the osx branch of the makefile only
+  # applies a target triple and SDK when CROSS_COMPILE=1.
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: macos-14
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            triple: arm64-apple-macos10.15
+          - arch: x86_64
+            triple: x86_64-apple-macos10.13
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Build
+        run: |
+          make -f Makefile.libretro platform=osx CC=clang CXX=clang++ CROSS_COMPILE=1 \
+            LIBRETRO_APPLE_PLATFORM=${{ matrix.triple }} \
+            LIBRETRO_APPLE_ISYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+            -j$(sysctl -n hw.ncpu)
+
+      - name: Package
+        run: |
+          lib=gambatte_libretro.dylib
+          mapfile -t hits < <(find . -maxdepth 2 -name "$lib" -type f)
+          if [ "${#hits[@]}" -ne 1 ]; then
+            echo "expected exactly one $lib, found ${#hits[@]}:"
+            printf '  %s\n' "${hits[@]}"
+            exit 1
+          fi
+          lipo -info "${hits[0]}"
+          if [ "$(lipo -archs "${hits[0]}")" != "${{ matrix.arch }}" ]; then
+            echo "$lib is not ${{ matrix.arch }}"
+            exit 1
+          fi
+          mkdir -p stage
+          cp "${hits[0]}" "stage/$lib"
+          (cd stage && zip -q -X ../gambatte_libretro_${{ matrix.arch }}.dylib.zip "$lib")
+          ls -lh gambatte_libretro_${{ matrix.arch }}.dylib.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: gambatte_libretro_${{ matrix.arch }}.dylib.zip
+          if-no-files-found: error
+
   publish:
     name: Publish release
-    needs: [windows, android]
+    needs: [windows, android, linux, macos]
     if: github.event_name == 'push' || github.event.inputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
@@ -166,8 +260,8 @@ jobs:
           cat > notes.md <<EOF
           gambatte libretro core built for retroXR, from \`$GITHUB_SHA\`.
 
-          Windows x86_64 and Android arm64-v8a. The source for these binaries is
-          this tag.
+          Windows x86_64, Android arm64-v8a, Linux x86_64 and macOS arm64 and
+          x86_64. The source for these binaries is this tag.
 
           Over the stock buildbot build this carries the Game Boy link cable,
           spoken over a bus the frontend hosts, plus two accuracy fixes it
@@ -184,4 +278,7 @@ jobs:
           gh release upload "$TAG" \
             dist/gambatte_libretro.dll.zip \
             dist/gambatte_libretro_android.so.zip \
+            dist/gambatte_libretro.so.zip \
+            dist/gambatte_libretro_arm64.dylib.zip \
+            dist/gambatte_libretro_x86_64.dylib.zip \
             --repo "$GITHUB_REPOSITORY" --clobber
