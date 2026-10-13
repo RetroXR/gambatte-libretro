@@ -11,6 +11,7 @@
 #ifdef HAVE_NETWORK
 #include "net_serial.h"
 #include "link_serial.h"
+#include "link_infrared.h"
 #endif
 
 #if defined(__DJGPP__) && defined(__STRICT_ANSI__)
@@ -1670,12 +1671,40 @@ static NetSerial gb_net_serial;
 static LinkSerial gb_link_serial;
 static SerialMode gb_serialMode = SERIAL_NONE;
 
+/* The Game Boy Color's infrared port, on the same bus and a port of its own.
+ * Port 1, where the cable is port 0: what a lead joins and what two units
+ * facing each other join are different things, and the frontend seats them
+ * separately. Attached for any machine that has the port, and inert until
+ * something is in view. */
+static LinkInfrared gb_link_ir;
+
 /* How much emulation retro_run may do before the next rendezvous, and what it
  * actually did. A cabled machine cannot simply run a whole chunk and look up
  * afterwards: it would sail past the tick a peer has reached, and a transfer
- * announced for a moment already gone is a byte lost. */
-#define LINK_ADVANCE(n)  gb_link_serial.advance(n)
-#define LINK_PRODUCED(n) gb_link_serial.produced(n)
+ * announced for a moment already gone is a byte lost.
+ *
+ * The infrared port goes first and the cable second, and only one of them may
+ * wait. A machine waiting on two buses can be waited on through both, and each
+ * bus lines its machines up on its own, so the cable can hold this machine for
+ * the other while the light holds the other for this one -- for ever, since
+ * neither bus has a timeout. So a port whose cable is carrying a peer goes
+ * deaf: it publishes where it is, which costs a lock and holds nobody up, and
+ * the cable alone decides how far the machine runs. */
+static unsigned link_advance(unsigned samples)
+{
+   gb_link_ir.setDeaf(gb_link_serial.cabled());
+   samples = gb_link_ir.advance(samples);
+   return gb_link_serial.advance(samples);
+}
+
+static void link_produced(unsigned samples)
+{
+   gb_link_serial.produced(samples);
+   gb_link_ir.produced(samples);
+}
+
+#define LINK_ADVANCE(n)  link_advance(n)
+#define LINK_PRODUCED(n) link_produced(n)
 static int gb_NetworkPort = 12345;
 static std::string gb_NetworkClientAddr;
 #endif
@@ -1734,7 +1763,10 @@ void retro_init(void)
       memset(&link, 0, sizeof(link));
       if (environ_cb(RETRO_ENVIRONMENT_GET_LINK_INTERFACE, &link) ||
           environ_cb(RETRO_ENVIRONMENT_GET_LINK_INTERFACE_FINAL, &link))
+      {
          gb_link_serial.setInterface(&link, 0);
+         gb_link_ir.setInterface(&link, 1);
+      }
    }
 #endif
 
@@ -1831,6 +1863,7 @@ void retro_deinit(void)
 
 #ifdef HAVE_NETWORK
    gb_link_serial.stop();
+   gb_link_ir.stop();
 #endif
 }
 
@@ -2893,6 +2926,17 @@ bool retro_load_game(const struct retro_game_info *info)
    check_variables(true);
    audio_resampler_init(true);
 
+#ifdef HAVE_NETWORK
+   /* The infrared port is a Game Boy Color's. An original Game Boy has none,
+    * and neither has a Game Boy Advance, which runs these games and leaves the
+    * window out -- so a machine asked to be either stays off the bus rather
+    * than joining it as a unit that can never flash. */
+   if (gb.isCgb() && !(flags & gambatte::GB::GBA_CGB) && gb_link_ir.start())
+      gb.setInfraredIO(&gb_link_ir);
+   else
+      gb.setInfraredIO(NULL);
+#endif
+
    unsigned sramlen       = gb.savedata_size();
    const uint64_t rom     = RETRO_MEMDESC_CONST;
    const uint64_t mainram = RETRO_MEMDESC_SYSTEM_RAM;
@@ -2955,6 +2999,8 @@ void retro_unload_game()
     * machine will never publish again. */
    gb_link_serial.stop();
    gb.setSerialIO(NULL);
+   gb_link_ir.stop();
+   gb.setInfraredIO(NULL);
 #endif
    /* Clear per-game state so a subsequent retro_load_game with
     * a different ROM doesn't see leftovers (palette autodetect

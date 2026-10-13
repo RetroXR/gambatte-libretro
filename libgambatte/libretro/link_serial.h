@@ -80,6 +80,12 @@ class LinkSerial : public gambatte::SerialIO
 
 		unsigned peers() const { return peers_; }
 
+		/* Whether another machine's serial hardware is on this wire, which is
+		 * what makes advance() wait. Not peers(): that goes to zero for a wire
+		 * with three machines on it, which this driver refuses to carry bytes
+		 * for and still has to keep time with. */
+		bool cabled() const { return attached_ && cabled_; }
+
 		/* SerialIO. */
 		virtual bool check(unsigned char out, unsigned char &in, bool &fastCgb);
 		virtual unsigned char send(unsigned char data, bool fastCgb);
@@ -120,6 +126,7 @@ class LinkSerial : public gambatte::SerialIO
 
 		int selfId_;
 		unsigned peers_;
+		bool cabled_;
 
 		/* This machine's position on the link timeline, in ticks of a clock
 		 * running at twice the Game Boy's normal 4.194304 MHz.
