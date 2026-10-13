@@ -14,6 +14,12 @@
 # flag were missing from a savestate, which slipped a frame on reload with the
 # LCD off.
 #
+# And the Game Boy Color's infrared port, on the same bus and a port of its own:
+# libretro/link_infrared.cpp speaking `gbc-ir-1` on link port 1, where the cable
+# is port 0. RP is an LED and a photodiode, so what crosses is when the LED
+# changed. Every Game Boy Color attaches it, behind no option, and it is inert
+# until the frontend puts two units in view of each other.
+#
 #   Windows  gambatte_libretro.dll.zip          containing gambatte_libretro.dll
 #   Android  gambatte_libretro_android.so.zip   containing gambatte_libretro_android.so
 #   Linux    gambatte_libretro.so.zip           containing gambatte_libretro.so
@@ -271,6 +277,10 @@ jobs:
           uncovered: the progressive serial shift took its bits from the wrong
           end of the incoming byte, and a savestate was missing the blit event
           and blank-LCD flag, which slipped a frame on reload with the LCD off.
+
+          It carries the Game Boy Color's infrared port as well, on the same
+          bus as \`gbc-ir-1\`: Mystery Gift between two units in view of each
+          other, whether both are run by this core or one of them by mGBA.
           EOF
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" \
