@@ -163,9 +163,19 @@ void Memory::startSerialTransfer(unsigned long cc, unsigned char data, bool fast
 }
 
 void Memory::checkSerial(unsigned long const cc) {
+	if (serial_io_ == 0)
+		return;
+
+	// Where the machine's clock stands, whether or not it is expecting
+	// anything. A serial link that has to agree a timeline with another
+	// machine needs this on every pass, not only on the passes where a
+	// transfer is already armed: it is how the two of them stay in step at
+	// all, and a machine that only spoke while it was waiting for a byte
+	// would hold up the one waiting for it.
+	serial_io_->tick(cc, isDoubleSpeed(), ioamhram_[0x101], ioamhram_[0x102]);
+
 	// Periodically checks if serial data is received
-	if ((serial_io_ != 0) &&
-		 ((ioamhram_[0x102] & 0x80) == 0x80) &&
+	if (((ioamhram_[0x102] & 0x80) == 0x80) &&
 		 (intreq_.eventTime(intevent_serial) == disabled_time)) {
 		unsigned char data;
 		bool fastCgb;
@@ -176,13 +186,32 @@ void Memory::checkSerial(unsigned long const cc) {
 }
 #endif
 
-void Memory::updateSerial(unsigned long const cc) {
-	if (intreq_.eventTime(intevent_serial) != disabled_time) {
+#ifdef HAVE_NETWORK
+/* Shift the incoming bits between `from` and `to` into SB.
+ *
+ * `from` and `to` count the bits still to come, so the bits arriving in this step
+ * are the ones sitting just above `to`. Reading them off the TOP of the incoming
+ * byte instead shifts in the same bit every step, and a transfer stepped through
+ * bit by bit then lands as 0x00 or 0xFF rather than what the other machine sent.
+ * Those are the only two bytes an unanswered cable produces, so nothing but a real
+ * peer can tell the difference.
+ *
+ * Stepping happens whenever the guest reads SB or SC, which polling SC's start bit
+ * does constantly, so this runs far more often than once per transfer. */
+static unsigned char shiftInSerial(unsigned sb, unsigned in, int from, int to) {
+	int const bits = from - to;
+	if (bits <= 0)
+		return static_cast<unsigned char>(sb);
+
+	return static_cast<unsigned char>(((sb << bits) | ((in >> to) & ((1 << bits) - 1))) & 0xFF);
+}
+#endif
+
+void Memory::updateSerial(unsigned long const cc) {	if (intreq_.eventTime(intevent_serial) != disabled_time) {
 		if (intreq_.eventTime(intevent_serial) <= cc) {
 #ifdef HAVE_NETWORK
 			bool fire = ((ioamhram_[0x102] & 0x80) == 0x80);
-			ioamhram_[0x101] = ((ioamhram_[0x101] << serialCnt_) |
-					    (serialize_value_ >> (8 - serialCnt_))) & 0xFF;
+			ioamhram_[0x101] = shiftInSerial(ioamhram_[0x101], serialize_value_, serialCnt_, 0);
 #else
          ioamhram_[0x101] = (((ioamhram_[0x101] + 1) << serialCnt_) - 1) & 0xFF;
 #endif
@@ -199,8 +228,8 @@ void Memory::updateSerial(unsigned long const cc) {
 			int const targetCnt = serialCntFrom(intreq_.eventTime(intevent_serial) - cc,
 #ifdef HAVE_NETWORK
 			                                    serialize_is_fastcgb_);
-			ioamhram_[0x101] = ((ioamhram_[0x101] << (serialCnt_ - targetCnt)) |
-					    (serialize_value_ >> (8 - (serialCnt_ - targetCnt)))) & 0xFF;
+			ioamhram_[0x101] = shiftInSerial(ioamhram_[0x101], serialize_value_,
+			                 serialCnt_, targetCnt);
 #else
                                              ioamhram_[0x102] & isCgb() * 2);
          ioamhram_[0x101] = (((ioamhram_[0x101] + 1) << (serialCnt_ - targetCnt)) - 1) & 0xFF;
@@ -1134,6 +1163,16 @@ void Memory::nontrivial_ff_write(unsigned const p, unsigned data, unsigned long 
 	}
 
 	ioamhram_[p + 0x100] = data;
+
+#ifdef HAVE_NETWORK
+	// And again with what the write left behind. The reading taken on the way
+	// in is of the register the guest is about to replace, so a link that
+	// publishes what this machine is offering would always be one write behind
+	// -- offering the byte before the one the game just loaded, which is the
+	// kind of fault a protocol survives for exactly one exchange.
+	if (serial_io_ != 0 && (p == 0x01 || p == 0x02))
+		serial_io_->tick(cc, isDoubleSpeed(), ioamhram_[0x101], ioamhram_[0x102]);
+#endif
 }
 
 void Memory::nontrivial_write(unsigned const p, unsigned const data, unsigned long const cc) {
