@@ -3,7 +3,7 @@
 #
 # This fork carries the Game Boy link cable: a link interface block, a SerialIO
 # that knows where the machine's clock stands, and libretro/link_serial.cpp
-# speaking `gb-sio-1` over a bus the frontend hosts. gambatte_gb_link_mode gains
+# speaking `gb-sio` over a bus the frontend hosts. gambatte_gb_link_mode gains
 # a fourth value, "Link Cable", and it is the default -- with no bus, or a bus
 # with nothing cabled to it, the driver hands back the 0xFF of an open line,
 # which is exactly what the port did before.
@@ -15,7 +15,7 @@
 # LCD off.
 #
 # And the Game Boy Color's infrared port, on the same bus and a port of its own:
-# libretro/link_infrared.cpp speaking `gbc-ir-1` on link port 1, where the cable
+# libretro/link_infrared.cpp speaking `gbc-ir` on link port 1, where the cable
 # is port 0. RP is an LED and a photodiode, so what crosses is when the LED
 # changed. Every Game Boy Color attaches it, behind no option, and it is inert
 # until the frontend puts two units in view of each other.
@@ -279,7 +279,7 @@ jobs:
           and blank-LCD flag, which slipped a frame on reload with the LCD off.
 
           It carries the Game Boy Color's infrared port as well, on the same
-          bus as \`gbc-ir-1\`: Mystery Gift between two units in view of each
+          bus as \`gbc-ir\`: Mystery Gift between two units in view of each
           other, whether both are run by this core or one of them by mGBA.
           EOF
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then

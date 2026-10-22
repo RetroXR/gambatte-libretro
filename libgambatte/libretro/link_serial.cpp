@@ -6,9 +6,9 @@
 
 /* Names the emulated wire. Peers whose ids differ are never joined, which is
  * what keeps a Game Boy link lead out of a Game Boy Advance's socket: mGBA's
- * driver calls its cable "gba-sio-1" and the two protocols have nothing in
+ * driver calls its cable "gba-sio" and the two protocols have nothing in
  * common but the shape of the connector. */
-#define LINK_PROTOCOL "gb-sio-1"
+#define LINK_PROTOCOL "gb-sio"
 
 /* Twice 4194304, the Game Boy's normal CPU clock. See the note on now_. */
 #define LINK_CLOCK_RATE ((uint64_t)8388608)

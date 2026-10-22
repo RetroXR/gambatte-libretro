@@ -10,7 +10,7 @@
  * infrared port to a serial lead would be refused here rather than heard. mGBA's
  * Game Boy speaks the same id and the same message, so a unit run by either core
  * sees a unit run by the other. */
-#define IR_PROTOCOL "gbc-ir-1"
+#define IR_PROTOCOL "gbc-ir"
 
 /* Twice 4194304, the Game Boy's normal CPU clock. See LinkSerial::now_. */
 #define IR_CLOCK_RATE ((uint64_t)8388608)
