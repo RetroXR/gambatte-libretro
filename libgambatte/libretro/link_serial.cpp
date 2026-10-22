@@ -69,6 +69,7 @@ LinkSerial::LinkSerial()
 	, attached_(false)
 	, selfId_(0)
 	, peers_(0)
+	, cabled_(false)
 	, now_(0)
 	, floor_(0)
 	, lastRaw_(0)
@@ -145,6 +146,7 @@ void LinkSerial::stop()
 	reannounceUntil_ = 0;
 	handle_ = 0;
 	peers_ = 0;
+	cabled_ = false;
 	selfId_ = 0;
 	pendingCount_ = 0;
 	clockReady_ = false;
@@ -372,6 +374,7 @@ void LinkSerial::refreshPeers()
 		return;
 
 	id = link_->peers(handle_, &count);
+	cabled_ = id >= 0 && count >= 2;
 	if (id < 0)
 	{
 		selfId_ = 0;
