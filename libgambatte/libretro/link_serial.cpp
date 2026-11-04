@@ -247,6 +247,17 @@ void LinkSerial::publish(unsigned char sb, unsigned char sc)
 	if (!attached_)
 		return;
 
+	/* Nobody on the wire to tell. A game polling for a partner flips SC
+	 * thousands of times a second, and each flip was a message to an empty
+	 * wire (a Game Boy alone ran Super R.C. Pro-Am at half speed). Left
+	 * unpublished, so the state goes out as soon as a peer joins (refreshPeers
+	 * and the re-announce window clear published_ too). */
+	if (peers_ < 2)
+	{
+		published_ = false;
+		return;
+	}
+
 	/* Armed means the guest has set the transfer bit and is waiting to be
 	 * clocked. A machine in the middle of a transfer is NOT armed even though
 	 * that bit is still set: the peer's byte is shifted into SB as the transfer
@@ -513,7 +524,13 @@ bool LinkSerial::check(unsigned char out, unsigned char &in, bool &fastCgb)
 	if (!attached_ || peers_ < 2)
 		return false;
 
-	pump();
+	/* No pump here. The core calls this on EVERY instruction while the guest is
+	 * armed, and a game that busy-loops armed (Super R.C. Pro-Am and Micro
+	 * Machines poll for the DMG-07 that way) paid a locked recv per instruction:
+	 * a Game Boy on the adapter ran at a sixth of real time or stalled outright.
+	 * Nothing is lost: a peer stamps every message at least its horizon ahead, so
+	 * one due before this machine's grant arrived before advance() granted it,
+	 * and advance() pumps. */
 	applyDue();
 
 	if (!clockReady_ || now_ < clockAt_)
