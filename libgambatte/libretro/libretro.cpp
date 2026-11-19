@@ -1756,13 +1756,10 @@ void retro_init(void)
 
 #ifdef HAVE_NETWORK
    {
-      /* Probe the experimental number first and the plain one after, so a core
-       * built today keeps working against a frontend that has since adopted the
-       * unflagged command. */
+      /* The link interface (libretro/RetroArch#19454), at its EXPERIMENTAL number. */
       static struct retro_link_interface link;
       memset(&link, 0, sizeof(link));
-      if (environ_cb(RETRO_ENVIRONMENT_GET_LINK_INTERFACE, &link) ||
-          environ_cb(RETRO_ENVIRONMENT_GET_LINK_INTERFACE_FINAL, &link))
+      if (environ_cb(RETRO_ENVIRONMENT_GET_LINK_INTERFACE, &link))
       {
          gb_link_serial.setInterface(&link, 0);
          gb_link_ir.setInterface(&link, 1);
