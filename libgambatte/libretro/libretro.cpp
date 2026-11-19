@@ -1756,7 +1756,7 @@ void retro_init(void)
 
 #ifdef HAVE_NETWORK
    {
-      /* The link interface (libretro/RetroArch#19454), at its EXPERIMENTAL number. */
+      /* Link interface (libretro/RetroArch#19454). */
       static struct retro_link_interface link;
       memset(&link, 0, sizeof(link));
       if (environ_cb(RETRO_ENVIRONMENT_GET_LINK_INTERFACE, &link))
